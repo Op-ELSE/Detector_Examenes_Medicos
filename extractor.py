@@ -80,7 +80,8 @@ def extract_with_gemini(pdf_path, filename):
     if not client:
         raise ValueError('No se encontro la clave de API de Gemini.')
 
-    pdf_bytes, pages_count = select_camo_pages(pdf_path, max_pages=3)
+    # Procesar hasta 25 páginas para cubrir todos los exámenes (Hemograma, EKG, RX, etc.)
+    pdf_bytes, pages_count = select_camo_pages(pdf_path, max_pages=30)
     
     response = client.models.generate_content(
         model='gemini-flash-latest',

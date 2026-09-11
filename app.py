@@ -5,6 +5,7 @@ from typing import List, Dict, Any
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 
@@ -19,6 +20,16 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 STATIC_DIR.mkdir(exist_ok=True)
 
 app = FastAPI(title='Detector de Campos de Exámenes Médicos')
+
+# Habilitar CORS para despliegue en internet
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.mount('/static', StaticFiles(directory=str(STATIC_DIR)), name='static')
 
 class ExportRequest(BaseModel):

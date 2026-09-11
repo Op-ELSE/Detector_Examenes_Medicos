@@ -20,8 +20,7 @@ def _make_columns():
     # Always include the PDF filename column
     cols.append(('archivo', 'Archivo PDF', 26))
     for field in FIELD_NAMES:
-        header = field.replace('_', ' ').title()
-        cols.append((field, header, 20))
+        cols.append((field, field, 22))
     return cols
 
 COLUMNS = _make_columns()

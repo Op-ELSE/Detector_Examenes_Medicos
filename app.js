@@ -7,9 +7,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const statusDiv = document.getElementById('status');
 
   // Helper to show a status message
-  const showStatus = (msg, isError = false) => {
+  const showStatus = (msg, type = 'info') => {
     statusDiv.textContent = msg;
-    statusDiv.style.color = isError ? 'red' : 'green';
+    statusDiv.className = `status active ${type}`;
   };
 
   // Build HTML table from an array of records
@@ -50,14 +50,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // Upload and extract handler
   const uploadAndExtract = async () => {
     if (fileInput.files.length === 0) {
-      showStatus('Seleccione al menos un archivo PDF.', true);
+      showStatus('Seleccione al menos un archivo PDF.', 'error');
       return;
     }
     const formData = new FormData();
     for (const file of fileInput.files) {
       formData.append('files', file);
     }
-    showStatus('Subiendo y procesando...');
+    showStatus('Subiendo y procesando con Inteligencia Artificial... por favor espere.', 'info');
     try {
       const resp = await fetch('/api/upload-and-extract', {
         method: 'POST',
@@ -70,10 +70,10 @@ document.addEventListener('DOMContentLoaded', () => {
       // Enable export button when we have successful rows
       const hasSuccess = results.some(r => r.status === 'success');
       exportBtn.disabled = !hasSuccess;
-      showStatus('Procesamiento completado.');
+      showStatus('¡Procesamiento completado con éxito! Ya puedes exportar a Excel.', 'success');
     } catch (e) {
       console.error(e);
-      showStatus('Falló la extracción: ' + e.message, true);
+      showStatus('Falló la extracción: ' + e.message, 'error');
     }
   };
 
