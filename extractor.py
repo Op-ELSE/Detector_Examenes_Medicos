@@ -75,36 +75,69 @@ def build_dynamic_prompt():
 
 EXTRACTION_PROMPT = build_dynamic_prompt()
 
+import time
+
+# Modelos en orden de preferencia si uno experimenta alta demanda (503 / saturación)
+CANDIDATE_MODELS = [
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash'
+]
+
 def extract_with_gemini(pdf_path, filename):
     client = get_gemini_client()
     if not client:
         raise ValueError('No se encontro la clave de API de Gemini.')
 
-    # Procesar hasta 25 páginas para cubrir todos los exámenes (Hemograma, EKG, RX, etc.)
+    # Procesar hasta 30 páginas para cubrir todos los exámenes (Hemograma, EKG, RX, etc.)
     pdf_bytes, pages_count = select_camo_pages(pdf_path, max_pages=30)
-    
-    response = client.models.generate_content(
-        model='gemini-flash-latest',
-        contents=[
-            types.Part.from_bytes(data=pdf_bytes, mime_type='application/pdf'),
-            EXTRACTION_PROMPT
-        ],
-        config=types.GenerateContentConfig(
-            response_mime_type='application/json',
-            temperature=0.1
-        )
-    )
 
-    raw_text = response.text.strip()
-    if raw_text.startswith('```json'):
-        raw_text = raw_text[7:]
-    if raw_text.endswith('```'):
-        raw_text = raw_text[:-3]
-    raw_text = raw_text.strip()
+    last_error = None
 
-    data = json.loads(raw_text)
-    data['archivo'] = filename
-    return data
+    for model_name in CANDIDATE_MODELS:
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                print(f"[{filename}] Intentando con modelo '{model_name}' (intento {attempt + 1}/{max_retries})...")
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=[
+                        types.Part.from_bytes(data=pdf_bytes, mime_type='application/pdf'),
+                        EXTRACTION_PROMPT
+                    ],
+                    config=types.GenerateContentConfig(
+                        response_mime_type='application/json',
+                        temperature=0.1
+                    )
+                )
+
+                raw_text = response.text.strip()
+                if raw_text.startswith('```json'):
+                    raw_text = raw_text[7:]
+                if raw_text.endswith('```'):
+                    raw_text = raw_text[:-3]
+                raw_text = raw_text.strip()
+
+                data = json.loads(raw_text)
+                data['archivo'] = filename
+                return data
+
+            except Exception as e:
+                err_str = str(e)
+                last_error = e
+                # Verificar si es error de sobrecarga (503), saturación o rate limit (429)
+                is_transient = any(k in err_str.lower() for k in ['503', 'unavailable', 'high demand', 'overloaded', '429', 'resource_exhausted'])
+                
+                if is_transient and attempt < max_retries - 1:
+                    wait_time = (2 ** attempt) * 2 + 1  # 3s, 5s...
+                    print(f"[{filename}] Servidor ocupado ({e}). Esperando {wait_time}s antes de reintentar...")
+                    time.sleep(wait_time)
+                else:
+                    print(f"[{filename}] Falló con modelo '{model_name}': {e}")
+                    break  # Cambiar al siguiente modelo de la lista
+
+    # Si todos los modelos y reintentos fallaron, propagar el último error
+    raise last_error
 
 def extract_locally_fallback(pdf_path, filename):
     doc = fitz.open(pdf_path)
