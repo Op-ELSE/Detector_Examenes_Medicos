@@ -77,11 +77,11 @@ EXTRACTION_PROMPT = build_dynamic_prompt()
 
 import time
 
-# Modelos en orden de preferencia si uno experimenta alta demanda (503 / saturación)
+# Modelos disponibles y operativos en la cuenta de API
 CANDIDATE_MODELS = [
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
-    'gemini-1.5-flash'
+    'gemini-3.5-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-flash-latest'
 ]
 
 def extract_with_gemini(pdf_path, filename):
