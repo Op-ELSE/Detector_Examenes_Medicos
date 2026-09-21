@@ -23,10 +23,10 @@ def _normalize_date(val):
     s = str(val).strip()
     m1 = re.search(r'\b(19\d\d|20\d\d)[-/.](\d{1,2})[-/.](\d{1,2})\b', s)
     if m1:
-        return f'{int(m1.group(3)):02d}/{int(m1.group(2)):02d}/{m1.group(1)}'
+        return f'{int(m1.group(2)):02d}/{int(m1.group(3)):02d}/{m1.group(1)}'
     m2 = re.search(r'\b(\d{1,2})[-/.](\d{1,2})[-/.](19\d\d|20\d\d)\b', s)
     if m2:
-        return f'{int(m2.group(1)):02d}/{int(m2.group(2)):02d}/{m2.group(3)}'
+        return f'{int(m2.group(2)):02d}/{int(m2.group(1)):02d}/{m2.group(3)}'
     return s
 
 def _make_columns():

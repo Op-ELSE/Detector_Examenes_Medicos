@@ -63,7 +63,7 @@ else:
     ALL_FIELDS = []
 
 def normalize_date_format(val):
-    """Convierte cualquier fecha detectada al formato estandar dd/mm/yyyy."""
+    """Convierte cualquier fecha detectada al formato estandar mm/dd/yyyy (mes/día/año)."""
     if not val:
         return val
     s = str(val).strip()
@@ -71,16 +71,16 @@ def normalize_date_format(val):
     m1 = re.search(r'\b(19\d\d|20\d\d)[-/.](\d{1,2})[-/.](\d{1,2})\b', s)
     if m1:
         y, m, d = m1.group(1), int(m1.group(2)), int(m1.group(3))
-        return f'{d:02d}/{m:02d}/{y}'
+        return f'{m:02d}/{d:02d}/{y}'
     # Coincidencia con DD-MM-YYYY o DD/MM/YYYY o DD.MM.YYYY
     m2 = re.search(r'\b(\d{1,2})[-/.](\d{1,2})[-/.](19\d\d|20\d\d)\b', s)
     if m2:
         d, m, y = int(m2.group(1)), int(m2.group(2)), m2.group(3)
-        return f'{d:02d}/{m:02d}/{y}'
+        return f'{m:02d}/{d:02d}/{y}'
     return s
 
 def clean_extracted_data(data):
-    """Post-procesa y asegura que todos los campos de fecha tengan formato dd/mm/yyyy."""
+    """Post-procesa y asegura que todos los campos de fecha tengan formato mm/dd/yyyy."""
     for key, val in list(data.items()):
         if 'fecha' in key.lower() and isinstance(val, str):
             data[key] = normalize_date_format(val)
@@ -94,8 +94,8 @@ def build_dynamic_prompt():
         "Analiza el documento PDF y extrae la información correspondiente a los siguientes campos:\n"
         f"{fields_list}\n"
         "REGLA ESTRICTA PARA FECHAS: Todos los campos de fecha (como Fecha_Examen, Fecha_Vencimiento, etc.) "
-        "DEBEN tener siempre el formato exacto dd/mm/yyyy (día/mes/año con 2 dígitos en día y mes y 4 en año, separados por barra '/'). "
-        "Ejemplo: 25/01/2020 en vez de 25-01-2020 o 2020-01-25.\n"
+        "DEBEN tener siempre el formato exacto mm/dd/yyyy (mes/día/año con 2 dígitos en mes y día y 4 en año, separados por barra '/'). "
+        "Ejemplo: Para el 25 de enero de 2020 debe ser 01/25/2020; para el 10 de noviembre de 2022 debe ser 11/10/2022.\n"
         "Devuelve un objeto JSON donde cada clave sea el nombre exacto del campo. Si un campo no está presente, omítelo.\n"
         "No añadas información adicional fuera de los campos solicitados."
     )

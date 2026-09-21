@@ -649,14 +649,14 @@
             if (Array.isArray(val)) val = val.join('; ');
             val = (val !== null && val !== undefined) ? String(val) : '';
 
-            // Formato visual de Fechas a dd/mm/yyyy
+            // Formato visual de Fechas a mm/dd/yyyy
             if (col.toLowerCase().includes('fecha') && val) {
               const m1 = val.match(/\b(19\d\d|20\d\d)[-/.](\d{1,2})[-/.](\d{1,2})\b/);
               const m2 = val.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](19\d\d|20\d\d)\b/);
               if (m1) {
-                val = `${String(m1[3]).padStart(2, '0')}/${String(m1[2]).padStart(2, '0')}/${m1[1]}`;
+                val = `${String(m1[2]).padStart(2, '0')}/${String(m1[3]).padStart(2, '0')}/${m1[1]}`;
               } else if (m2) {
-                val = `${String(m2[1]).padStart(2, '0')}/${String(m2[2]).padStart(2, '0')}/${m2[3]}`;
+                val = `${String(m2[2]).padStart(2, '0')}/${String(m2[1]).padStart(2, '0')}/${m2[3]}`;
               }
             }
 
