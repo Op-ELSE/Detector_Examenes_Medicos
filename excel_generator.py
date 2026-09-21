@@ -89,9 +89,9 @@ def generate_excel(records):
             cell.font = data_font
             cell.border = thin_border
 
-            if field_id in ['dni', 'edad', 'sexo', 'tipo_examen', 'fecha_examen', 'fecha_vencimiento']:
+            if field_id in ['dni', 'edad', 'sexo', 'tipo_examen', 'fecha_examen', 'fecha_vencimiento', 'Fecha_Examen', 'Fecha_Vencimiento', 'DNI']:
                 cell.alignment = center_align
-            elif field_id in ['restricciones', 'diagnosticos', 'recomendaciones']:
+            elif field_id in ['restricciones', 'diagnosticos', 'recomendaciones', 'Recomendacion_General', 'Restricciones_General']:
                 cell.alignment = wrap_align
             else:
                 cell.alignment = left_align
@@ -100,7 +100,7 @@ def generate_excel(records):
                 cell.fill = fill_alt_row
 
             # Formato condicional para Aptitud
-            if field_id == 'aptitud':
+            if field_id in ['aptitud', 'Resultado_Aptitud_Final']:
                 apt_upper = str(val).upper()
                 cell.alignment = center_align
                 if 'RESTRICCION' in apt_upper or 'OBSERVACIONES' in apt_upper:
