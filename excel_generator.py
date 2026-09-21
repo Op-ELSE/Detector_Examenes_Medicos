@@ -15,6 +15,20 @@ if FIELDS_PATH.exists():
 else:
     FIELD_NAMES = []
 
+import re
+
+def _normalize_date(val):
+    if not val:
+        return val
+    s = str(val).strip()
+    m1 = re.search(r'\b(19\d\d|20\d\d)[-/.](\d{1,2})[-/.](\d{1,2})\b', s)
+    if m1:
+        return f'{int(m1.group(3)):02d}/{int(m1.group(2)):02d}/{m1.group(1)}'
+    m2 = re.search(r'\b(\d{1,2})[-/.](\d{1,2})[-/.](19\d\d|20\d\d)\b', s)
+    if m2:
+        return f'{int(m2.group(1)):02d}/{int(m2.group(2)):02d}/{m2.group(3)}'
+    return s
+
 def _make_columns():
     cols = []
     # Always include the PDF filename column
@@ -85,11 +99,14 @@ def generate_excel(records):
             elif val is None:
                 val = ''
             
+            if 'fecha' in field_id.lower() and val:
+                val = _normalize_date(val)
+            
             cell = ws.cell(row=row_idx, column=col_idx, value=str(val))
             cell.font = data_font
             cell.border = thin_border
 
-            if field_id in ['dni', 'edad', 'sexo', 'tipo_examen', 'fecha_examen', 'fecha_vencimiento', 'Fecha_Examen', 'Fecha_Vencimiento', 'DNI']:
+            if 'fecha' in field_id.lower() or field_id in ['dni', 'edad', 'sexo', 'tipo_examen', 'fecha_examen', 'fecha_vencimiento', 'Fecha_Examen', 'Fecha_Vencimiento', 'DNI']:
                 cell.alignment = center_align
             elif field_id in ['restricciones', 'diagnosticos', 'recomendaciones', 'Recomendacion_General', 'Restricciones_General']:
                 cell.alignment = wrap_align

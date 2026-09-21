@@ -62,6 +62,30 @@ if FIELDS_PATH.exists():
 else:
     ALL_FIELDS = []
 
+def normalize_date_format(val):
+    """Convierte cualquier fecha detectada al formato estandar dd/mm/yyyy."""
+    if not val:
+        return val
+    s = str(val).strip()
+    # Coincidencia con YYYY-MM-DD o YYYY/MM/DD o YYYY.MM.DD
+    m1 = re.search(r'\b(19\d\d|20\d\d)[-/.](\d{1,2})[-/.](\d{1,2})\b', s)
+    if m1:
+        y, m, d = m1.group(1), int(m1.group(2)), int(m1.group(3))
+        return f'{d:02d}/{m:02d}/{y}'
+    # Coincidencia con DD-MM-YYYY o DD/MM/YYYY o DD.MM.YYYY
+    m2 = re.search(r'\b(\d{1,2})[-/.](\d{1,2})[-/.](19\d\d|20\d\d)\b', s)
+    if m2:
+        d, m, y = int(m2.group(1)), int(m2.group(2)), m2.group(3)
+        return f'{d:02d}/{m:02d}/{y}'
+    return s
+
+def clean_extracted_data(data):
+    """Post-procesa y asegura que todos los campos de fecha tengan formato dd/mm/yyyy."""
+    for key, val in list(data.items()):
+        if 'fecha' in key.lower() and isinstance(val, str):
+            data[key] = normalize_date_format(val)
+    return data
+
 def build_dynamic_prompt():
     """Construye el prompt que incluye la lista de campos para Gemini."""
     fields_list = ", ".join(ALL_FIELDS)
@@ -69,6 +93,9 @@ def build_dynamic_prompt():
         "Eres un auditor médico experto en Salud Ocupacional.\n"
         "Analiza el documento PDF y extrae la información correspondiente a los siguientes campos:\n"
         f"{fields_list}\n"
+        "REGLA ESTRICTA PARA FECHAS: Todos los campos de fecha (como Fecha_Examen, Fecha_Vencimiento, etc.) "
+        "DEBEN tener siempre el formato exacto dd/mm/yyyy (día/mes/año con 2 dígitos en día y mes y 4 en año, separados por barra '/'). "
+        "Ejemplo: 25/01/2020 en vez de 25-01-2020 o 2020-01-25.\n"
         "Devuelve un objeto JSON donde cada clave sea el nombre exacto del campo. Si un campo no está presente, omítelo.\n"
         "No añadas información adicional fuera de los campos solicitados."
     )
@@ -120,6 +147,7 @@ def extract_with_gemini(pdf_path, filename):
 
                 data = json.loads(raw_text)
                 data['archivo'] = filename
+                data = clean_extracted_data(data)
                 return data
 
             except Exception as e:
