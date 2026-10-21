@@ -79,11 +79,64 @@ def normalize_date_format(val):
         return f'{m:02d}/{d:02d}/{y}'
     return s
 
+def normalize_aptitud(val):
+    """Estandariza los resultados de aptitud a: APTO, NO APTO o APTO CON RESTRICCIONES."""
+    if not val:
+        return val
+    s = str(val).strip().upper()
+    if 'NO APTO' in s:
+        return 'NO APTO'
+    if 'RESTRICCI' in s or 'OBSERV' in s:
+        return 'APTO CON RESTRICCIONES'
+    if 'APTO' in s:
+        return 'APTO'
+    return s
+
+def clean_numeric_value(val):
+    """
+    Si el valor contiene datos numéricos de laboratorio o medidas,
+    remueve las unidades de medida dejando únicamente el número.
+    Ejemplos: '14.5 g/dl' -> '14.5', '120/80 mmHg' -> '120/80', '85 mg/dL' -> '85'.
+    """
+    if val is None:
+        return val
+    if isinstance(val, (int, float)):
+        return val
+    s = str(val).strip()
+    if not s:
+        return s
+
+    # No alterar fechas con barras o guiones tipo 01/25/2020
+    if re.search(r'\b\d{1,2}/\d{1,2}/\d{4}\b', s) or re.search(r'\b\d{4}-\d{2}-\d{2}\b', s):
+        return s
+
+    # Si es puramente texto cualitativo (ej. 'Positivo', 'Negativo', 'Normal', 'No reactivo', 'APTO')
+    if not re.search(r'\d', s):
+        return s
+
+    # Patrón para número con posible rango/presión (ej: 120/80 o 14.5 o 250,000)
+    # Extraer dígitos, comas/puntos decimales o barra de presión
+    m = re.match(r'^\s*([><=~±]?\s*\d+(?:[.,]\d+)?(?:\s*/\s*\d+(?:[.,]\d+)?)?)\s*(?:[a-zA-Z%µ/°].*)?$', s)
+    if m:
+        clean_num = m.group(1).strip()
+        return clean_num
+
+    # Si contiene número seguido de unidades comunes (mg/dl, g/dl, %, mmhg, etc.)
+    cleaned = re.sub(r'(?i)\s*(g/dl|mg/dl|mmol/l|ui/l|u/l|u/ml|mmhg|cm|kg|m2|m|l|ml|%|porcentaje|x10\^?\d*|cel/campo|p/c|leuc/campo|fl|pg|g/l|seg|segundos|bpm|lpm|rpm)\b.*', '', s).strip()
+    return cleaned if cleaned else s
+
 def clean_extracted_data(data):
-    """Post-procesa y asegura que todos los campos de fecha tengan formato mm/dd/yyyy."""
+    """Post-procesa fechas, aptitudes y valores numéricos limpios."""
     for key, val in list(data.items()):
-        if 'fecha' in key.lower() and isinstance(val, str):
+        if not val:
+            continue
+        key_lower = key.lower()
+        if 'fecha' in key_lower and isinstance(val, str):
             data[key] = normalize_date_format(val)
+        elif 'aptitud' in key_lower:
+            data[key] = normalize_aptitud(val)
+        else:
+            data[key] = clean_numeric_value(val)
     return data
 
 def build_dynamic_prompt():
@@ -93,9 +146,13 @@ def build_dynamic_prompt():
         "Eres un auditor médico experto en Salud Ocupacional.\n"
         "Analiza el documento PDF y extrae la información correspondiente a los siguientes campos:\n"
         f"{fields_list}\n"
-        "REGLA ESTRICTA PARA FECHAS: Todos los campos de fecha (como Fecha_Examen, Fecha_Vencimiento, etc.) "
-        "DEBEN tener siempre el formato exacto mm/dd/yyyy (mes/día/año con 2 dígitos en mes y día y 4 en año, separados por barra '/'). "
-        "Ejemplo: Para el 25 de enero de 2020 debe ser 01/25/2020; para el 10 de noviembre de 2022 debe ser 11/10/2022.\n"
+        "REGLAS OBLIGATORIAS:\n"
+        "1. VALORES NUMÉRICOS: Para cualquier campo que reporte valores de laboratorio, signos vitales o mediciones (ej. Hemoglobina, Glucosa, Colesterol, Leucocitos, Presión, Talla, Peso, Frecuencia Cardíaca, etc.), EXTRAE ÚNICAMENTE EL VALOR NUMÉRICO, SIN UNIDAD DE MEDIDA (ejemplo: si dice '14.5 g/dL' coloca '14.5'; si dice '95 mg/dL' coloca '95'; si dice '72 lpm' coloca '72').\n"
+        "2. RESULTADOS DE APTITUD: Para los campos de aptitud (como Resultado_Aptitud_Final), el valor DEBE ser estrictamente uno de estos tres valores estandarizados:\n"
+        "   - 'APTO'\n"
+        "   - 'NO APTO'\n"
+        "   - 'APTO CON RESTRICCIONES'\n"
+        "3. FORMATO DE FECHAS: Todos los campos de fecha DEBEN tener siempre el formato exacto mm/dd/yyyy (ejemplo: 01/25/2020).\n"
         "Devuelve un objeto JSON donde cada clave sea el nombre exacto del campo. Si un campo no está presente, omítelo.\n"
         "No añadas información adicional fuera de los campos solicitados."
     )

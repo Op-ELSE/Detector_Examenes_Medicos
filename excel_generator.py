@@ -29,6 +29,37 @@ def _normalize_date(val):
         return f'{int(m2.group(2)):02d}/{int(m2.group(1)):02d}/{m2.group(3)}'
     return s
 
+def _normalize_aptitud(val):
+    if not val:
+        return val
+    s = str(val).strip().upper()
+    if 'NO APTO' in s:
+        return 'NO APTO'
+    if 'RESTRICCI' in s or 'OBSERV' in s:
+        return 'APTO CON RESTRICCIONES'
+    if 'APTO' in s:
+        return 'APTO'
+    return s
+
+def _clean_numeric_value(val):
+    if val is None:
+        return val
+    if isinstance(val, (int, float)):
+        return val
+    s = str(val).strip()
+    if not s:
+        return s
+    # Ignorar fechas
+    if re.search(r'\b\d{1,2}/\d{1,2}/\d{4}\b', s) or re.search(r'\b\d{4}-\d{2}-\d{2}\b', s):
+        return s
+    if not re.search(r'\d', s):
+        return s
+    m = re.match(r'^\s*([><=~±]?\s*\d+(?:[.,]\d+)?(?:\s*/\s*\d+(?:[.,]\d+)?)?)\s*(?:[a-zA-Z%µ/°].*)?$', s)
+    if m:
+        return m.group(1).strip()
+    cleaned = re.sub(r'(?i)\s*(g/dl|mg/dl|mmol/l|ui/l|u/l|u/ml|mmhg|cm|kg|m2|m|l|ml|%|porcentaje|x10\^?\d*|cel/campo|p/c|leuc/campo|fl|pg|g/l|seg|segundos|bpm|lpm|rpm)\b.*', '', s).strip()
+    return cleaned if cleaned else s
+
 def _make_columns():
     cols = []
     # Always include the PDF filename column
@@ -101,6 +132,10 @@ def generate_excel(records):
             
             if 'fecha' in field_id.lower() and val:
                 val = _normalize_date(val)
+            elif 'aptitud' in field_id.lower():
+                val = _normalize_aptitud(val)
+            else:
+                val = _clean_numeric_value(val)
             
             cell = ws.cell(row=row_idx, column=col_idx, value=str(val))
             cell.font = data_font
