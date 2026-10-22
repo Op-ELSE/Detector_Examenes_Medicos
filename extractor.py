@@ -122,13 +122,63 @@ def clean_numeric_value(val):
         return clean_num
 
     # Si contiene número seguido de unidades comunes (mg/dl, g/dl, %, mmhg, etc.)
-    cleaned = re.sub(r'(?i)\s*(g/dl|mg/dl|mmol/l|ui/l|u/l|u/ml|mmhg|cm|kg|m2|m|l|ml|%|porcentaje|x10\^?\d*|cel/campo|p/c|leuc/campo|fl|pg|g/l|seg|segundos|bpm|lpm|rpm)\b.*', '', s).strip()
+    cleaned = re.sub(r'(?i)\s*(g/dl|mg/dl|mmol/l|ui/l|u/l|u/ml|mmhg|cm|kg|m2|m|l|ml|%|porcentaje|x10\^?\d*|cel/campo|p/c|leuc/campo|fl|pg|g/l|seg|segundos|bpm|lpm|rpm)\s*$', '', s).strip()
     return cleaned if cleaned else s
+
+def _append_comment_if_extra(std_choice, original_text):
+    """
+    Si el texto original contiene detalles adicionales significativos más allá de la simple
+    etiqueta normalizada (ej: 'NORMAL: campos limpios', 'ALTERADO: soplo sistolico',
+    'SI: con firma digital'), concatena: OPCION - Comentario Adicional.
+    """
+    if not original_text:
+        return std_choice
+    orig_clean = str(original_text).strip()
+    
+    # Si ya viene en formato 'OPCION - Comentario' (generado directamente por Gemini)
+    if ' - ' in orig_clean:
+        partes = orig_clean.split(' - ', 1)
+        base = partes[0].strip().upper()
+        det = partes[1].strip()
+        if det:
+            return f"{std_choice} - {det}"
+        return std_choice
+
+    orig_upper = orig_clean.upper()
+    
+    # Frases que simplemente significan NORMAL sin constituir un hallazgo adicional
+    trivial_normals = [
+        'NORMAL', 'SIN ALTERACIONES', 'S/A', 'SIN ALTERACION', 'CONSERVADO', 'CONSERVADA',
+        'APARENTEMENTE NORMAL', 'ADECUADO', 'ADECUADA', 'BUENO', 'BUENA', 'VENTILAN BIEN',
+        'CAMPOS PULMONARES LIMPIOS Y NORMALES', 'CAMPOS LIMPIOS', 'SIN LESIONES',
+        'NO SE OBSERVAN ALTERACIONES', 'NEGATIVO', '0', '0 MG/DL', 'NO CONTIENE'
+    ]
+    if any(orig_upper == tn or orig_upper == f"NORMAL {tn}" for tn in trivial_normals):
+        return std_choice
+
+    # Quitar palabras de prefijo redundantes con límites de palabra (\b)
+    cleaned_detail = re.sub(
+        r'^\s*\b(normal|alterado|anormal|patologico|si|sí|se realizo|se realizó|no|positivo|negativo|conservado|conservada|limpido|límpido|turbio|sinusal|ritmo sinusal)\b\s*[-:,;.]*\s*',
+        '',
+        orig_clean,
+        flags=re.IGNORECASE
+    ).strip()
+
+    # Si queda texto adicional con significado clínico
+    if cleaned_detail and len(cleaned_detail) > 2 and cleaned_detail.upper() != std_choice.upper():
+        cleaned_detail = cleaned_detail.strip(" '\"-:,;()[]+")
+        if cleaned_detail:
+            cleaned_detail = cleaned_detail[0].upper() + cleaned_detail[1:] if len(cleaned_detail) > 1 else cleaned_detail
+            return f"{std_choice} - {cleaned_detail}"
+
+    return std_choice
 
 def normalize_standard_values(key, val):
     """
-    Estandariza los valores categóricos a opciones predefinidas y uniformes tipo menú desplegable.
-    Las recomendaciones, observaciones, comentarios y conclusiones extensas se mantienen libres.
+    Estandariza los valores categóricos a formato 'OPCION' o 'OPCION - Comentario adicional'
+    si el examen médico reporta hallazgos específicos.
+    Aptitud médica final se mantiene estrictamente pura ('APTO', 'NO APTO', 'APTO CON RESTRICCIONES').
+    Recomendaciones, observaciones y conclusiones extensas se mantienen como texto libre.
     """
     if val is None:
         return val
@@ -144,7 +194,7 @@ def normalize_standard_values(key, val):
 
     s_upper = s.upper()
 
-    # 1. Aptitud médica final o sectorial
+    # 1. Aptitud médica final o sectorial (ESTRICTAMENTE PURA, sin comentarios anexados aquí)
     if 'aptitud' in key_lower or key_lower in ['resultado_aptitud_final', 'alt_resultado_de_suficiencia']:
         if 'NO APTO' in s_upper:
             return 'NO APTO'
@@ -157,19 +207,19 @@ def normalize_standard_values(key, val):
     # 2. Campos booleanos / Si-No (Pruebas realizadas, validaciones, firmas)
     if any(k in key_lower for k in ['realizada', 'realizado', 'validada', 'validado', 'declarado', 'cumple']):
         if any(w in s_upper for w in ['SI', 'SÍ', 'REALIZADO', 'REALIZADA', 'APLICADO', 'VALIDADO', 'CORRECTO', 'TRUE', '1']):
-            return 'SI'
+            return _append_comment_if_extra('SI', s)
         if any(w in s_upper for w in ['NO', 'NO REALIZADO', 'NO REALIZADA', 'FALSO', 'FALSE', '0']):
-            return 'NO'
+            return _append_comment_if_extra('NO', s)
         return s
 
     # 3. Exámenes toxicológicos / Drogas (Cocaína, Cannabinoides)
     if 'dro_' in key_lower or 'cocaina' in key_lower or 'cannabinoide' in key_lower:
         if any(w in s_upper for w in ['NO REACTIVO', 'NEGATIVO', 'NO DETECTADO']):
-            return 'NO REACTIVO'
+            return _append_comment_if_extra('NO REACTIVO', s)
         if any(w in s_upper for w in ['REACTIVO', 'POSITIVO', 'DETECTADO']):
-            return 'REACTIVO'
+            return _append_comment_if_extra('REACTIVO', s)
         if 'INDETERMINADO' in s_upper or 'DUDOSO' in s_upper:
-            return 'INDETERMINADO'
+            return _append_comment_if_extra('INDETERMINADO', s)
 
     # 4. Grupo sanguíneo ABO y Factor RH
     if 'rh_grupo_sanguineo' in key_lower:
@@ -185,66 +235,66 @@ def normalize_standard_values(key, val):
     # 5. EKG: Ritmo cardíaco y ritmo sinusal
     if 'ekg_ritmo' in key_lower:
         if 'SINUSAL' in s_upper:
-            return 'SINUSAL'
+            return _append_comment_if_extra('SINUSAL', s)
         if 'ARRIT' in s_upper:
-            return 'ARRITMIA'
+            return _append_comment_if_extra('ARRITMIA', s)
         if 'NO SINUSAL' in s_upper:
-            return 'NO SINUSAL'
+            return _append_comment_if_extra('NO SINUSAL', s)
 
     # 6. Agudeza visual / Oftalmología
     if 'oft_resultado_de_ishihara' in key_lower or 'vision_de_colores' in key_lower:
         if any(w in s_upper for w in ['NORMAL', 'NEGATIVO', 'CONSERVAD', 'CONSERVA']):
-            return 'NORMAL'
+            return _append_comment_if_extra('NORMAL', s)
         if any(w in s_upper for w in ['ALTERAD', 'DEFICIT', 'POSITIVO', 'DALTONISMO', 'ANORMAL']):
-            return 'ALTERADO'
+            return _append_comment_if_extra('ALTERADO', s)
 
     if 'oft_uso_de_lentes' in key_lower:
         if any(w in s_upper for w in ['SI', 'SÍ', 'USA', 'CORRECTOR']):
-            return 'SI'
+            return _append_comment_if_extra('SI', s)
         if any(w in s_upper for w in ['NO', 'NO USA']):
-            return 'NO'
+            return _append_comment_if_extra('NO', s)
 
     if 'oft_estereopsis' in key_lower:
         if any(w in s_upper for w in ['NORMAL', 'CONSERVAD', 'PRESENTE', 'POSITIV']):
-            return 'CONSERVADA'
+            return _append_comment_if_extra('CONSERVADA', s)
         if any(w in s_upper for w in ['ALTERAD', 'ANORMAL', 'DISMINUID', 'NEGATIV']):
-            return 'ALTERADA'
+            return _append_comment_if_extra('ALTERADA', s)
 
     # 7. Orina: Aspecto, Color, Elementos Químicos
     if 'ori_aspecto' in key_lower:
         if 'LIMPID' in s_upper or 'CLARO' in s_upper or 'TRANSPARENTE' in s_upper:
-            return 'LIMPIDO'
+            return _append_comment_if_extra('LIMPIDO', s)
         if 'LIGERAMENTE TURBIO' in s_upper or 'SEMILIMPIDO' in s_upper:
-            return 'LIGERAMENTE TURBIO'
+            return _append_comment_if_extra('LIGERAMENTE TURBIO', s)
         if 'TURBIO' in s_upper:
-            return 'TURBIO'
+            return _append_comment_if_extra('TURBIO', s)
 
     if 'ori_color' in key_lower:
         if 'AMARILLO' in s_upper or 'AMBAR' in s_upper:
-            return 'AMARILLO'
+            return _append_comment_if_extra('AMARILLO', s)
         if 'ROJIZO' in s_upper or 'HEMAT' in s_upper:
-            return 'ROJIZO'
+            return _append_comment_if_extra('ROJIZO', s)
 
     if any(k in key_lower for k in ['ori_glucosa', 'ori_hemoglobina', 'ori_proteinas', 'ori_sangre', 'ori_cetonas', 'ori_bilirrubina', 'ori_nitritos']):
         if any(w in s_upper for w in ['NEGATIVO', 'NO CONTIENE', 'AUSENTE', 'NO OBSERVA', '0', 'NORMAL']):
-            return 'NEGATIVO'
+            return _append_comment_if_extra('NEGATIVO', s)
         if any(w in s_upper for w in ['POSITIVO', 'TRAZAS', 'PRESENTE', '+']):
-            return 'POSITIVO'
+            return _append_comment_if_extra('POSITIVO', s)
 
     # 8. Evaluación de Órganos / Sistemas (Clínico, RX, Musculoesquelético, Dermatológico)
     # Ej: Cabeza, Cuello, Tórax, Abdomen, Piel, Columna, etc.
     if any(key_lower.startswith(p) for p in ['cli_', 'rx_', 'mus_', 'der_', 'alt_']):
         if any(w in s_upper for w in ['NORMAL', 'CONSERVAD', 'SIN ALTERACI', 'S/A', 'NEGATIV', 'APARENTEMENTE NORMAL', 'ADECUAD', 'BUENO', 'VENTILAN BIEN']):
-            return 'NORMAL'
-        if any(w in s_upper for w in ['ANORMAL', 'ALTERAD', 'PATOLOGIC', 'DOLOR', 'LIMITAD', 'LESION', 'OBSERVAD']):
-            return 'ALTERADO'
+            return _append_comment_if_extra('NORMAL', s)
+        # Si no dice normal y describe hallazgos o anomalías, es ALTERADO + detalle
+        return _append_comment_if_extra('ALTERADO', s)
 
     # 9. Resultados generales de especialidades (RX_Resultado, EKG_Resultado, PSI_Resultado, etc.)
     if 'resultado' in key_lower or 'indicador' in key_lower:
         if any(w in s_upper for w in ['NORMAL', 'DENTRO DE LIMITES', 'DENTRO DE RANGO', 'NEGATIVO', 'SIN ALTERACION', 'CONSERVADO', 'ADECUADO', 'OPTIMO', 'NO PATOLOGICO']):
-            return 'NORMAL'
+            return _append_comment_if_extra('NORMAL', s)
         if any(w in s_upper for w in ['ALTERADO', 'FUERA DE RANGO', 'PATOLOGICO', 'ANORMAL', 'OBSERVADO', 'POSITIVO']):
-            return 'ALTERADO'
+            return _append_comment_if_extra('ALTERADO', s)
         if any(w in s_upper for w in ['NO APTO']):
             return 'NO APTO'
         if any(w in s_upper for w in ['APTO CON RESTRIC', 'CON RESTRIC']):
@@ -275,17 +325,19 @@ def build_dynamic_prompt():
         "Eres un auditor médico experto en Salud Ocupacional.\n"
         "Analiza el documento PDF y extrae la información correspondiente a los siguientes campos:\n"
         f"{fields_list}\n"
-        "REGLAS OBLIGATORIAS DE ESTANDARIZACIÓN (COMO OPCIONES DE LISTA):\n"
-        "1. VALORES CATEGÓRICOS Y DE EVALUACIÓN (DEBEN SER UNIFORMES):\n"
-        "   - Resultados de órganos, sistemas o pruebas generales (RX_Campos_pulmonares, CLI_Cabeza, CLI_Torax, EKG_Resultado, RX_Resultado, etc.): Usa estrictamente 'NORMAL' o 'ALTERADO'.\n"
-        "   - Campos de confirmación / realización (ej. EKG_Electrocardiograma_realizado, RX_Radiografia_realizada, etc.): Usa estrictamente 'SI' o 'NO'.\n"
-        "   - Toxicología / Drogas (Cocaína, Cannabinoides): Usa estrictamente 'NO REACTIVO', 'REACTIVO' o 'INDETERMINADO'.\n"
-        "   - Visión de colores / Ishihara: Usa estrictamente 'NORMAL' o 'ALTERADO'. Uso de lentes: 'SI' o 'NO'.\n"
-        "   - Orina aspecto: 'LIMPIDO' o 'TURBIO'. Examen químico de orina (Glucosa, Proteínas, Sangre, etc.): 'NEGATIVO' o 'POSITIVO'.\n"
-        "   - Ritmo cardíaco EKG: 'SINUSAL', 'NO SINUSAL' o 'ARRITMIA'.\n"
-        "   - Grupo y Factor: Grupo 'A', 'B', 'AB', 'O'. Factor 'POSITIVO (+)' o 'NEGATIVO (-)'.\n"
-        "2. RESULTADOS DE APTITUD MÉDICA:\n"
-        "   - El valor para Resultado_Aptitud_Final y aptitudes DEBE ser estrictamente uno de estos tres:\n"
+        "REGLAS OBLIGATORIAS DE ESTANDARIZACIÓN:\n"
+        "1. VALORES TIPO OPCIÓN CON COMENTARIO ADICIONAL:\n"
+        "   Para los campos de tipo opción (evaluaciones de órganos, sistemas, radiografías, EKG, orina, toxicología, pruebas realizadas, etc.), SI EL EXAMEN MÉDICO REPORTA UN DETALLE O COMENTARIO ADICIONAL ESPECÍFICO, COLOCA: [OPCION] - [COMENTARIO ADICIONAL]. Si no hay detalle adicional o todo es simple, coloca solo la opción.\n"
+        "   Ejemplos:\n"
+        "   - Si CLI_Torax dice 'Simétrico con dolor a la palpación' -> 'ALTERADO - Dolor a la palpación'\n"
+        "   - Si CLI_Torax dice 'Sin alteraciones' -> 'NORMAL'\n"
+        "   - Si RX_Campos_pulmonares dice 'Infiltrado basal derecho' -> 'ALTERADO - Infiltrado basal derecho'\n"
+        "   - Si EKG_Ritmo_cardiaco dice 'Sinusal con extrasístoles ventriculares aisladas' -> 'SINUSAL - Extrasístoles ventriculares aisladas'\n"
+        "   - Si RX_Radiografia_realizada dice 'Sí, validada con firma digital' -> 'SI - Con firma digital'\n"
+        "   - Si ORI_Aspecto dice 'Ligeramente turbio por filamentos de moco' -> 'LIGERAMENTE TURBIO - Presencia de filamentos de moco'\n"
+        "   - Las opciones base son: 'NORMAL'/'ALTERADO', 'SI'/'NO', 'NO REACTIVO'/'REACTIVO', 'LIMPIDO'/'TURBIO', 'NEGATIVO'/'POSITIVO', 'SINUSAL'/'ARRITMIA'.\n"
+        "2. RESULTADOS DE APTITUD MÉDICA (EXCEPCIÓN ESTRICTA: SOLO LA OPCIÓN PURA, SIN COMENTARIOS):\n"
+        "   - Para Resultado_Aptitud_Final y campos de aptitud, DEBE ser ESTRICTAMENTE uno de estos tres valores puros (sin agregarle comentarios):\n"
         "     * 'APTO'\n"
         "     * 'NO APTO'\n"
         "     * 'APTO CON RESTRICCIONES'\n"

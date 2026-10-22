@@ -57,8 +57,44 @@ def _clean_numeric_value(val):
     m = re.match(r'^\s*([><=~±]?\s*\d+(?:[.,]\d+)?(?:\s*/\s*\d+(?:[.,]\d+)?)?)\s*(?:[a-zA-Z%µ/°].*)?$', s)
     if m:
         return m.group(1).strip()
-    cleaned = re.sub(r'(?i)\s*(g/dl|mg/dl|mmol/l|ui/l|u/l|u/ml|mmhg|cm|kg|m2|m|l|ml|%|porcentaje|x10\^?\d*|cel/campo|p/c|leuc/campo|fl|pg|g/l|seg|segundos|bpm|lpm|rpm)\b.*', '', s).strip()
+    cleaned = re.sub(r'(?i)\s*(g/dl|mg/dl|mmol/l|ui/l|u/l|u/ml|mmhg|cm|kg|m2|m|l|ml|%|porcentaje|x10\^?\d*|cel/campo|p/c|leuc/campo|fl|pg|g/l|seg|segundos|bpm|lpm|rpm)\s*$', '', s).strip()
     return cleaned if cleaned else s
+
+def _append_comment_if_extra(std_choice, original_text):
+    if not original_text:
+        return std_choice
+    orig_clean = str(original_text).strip()
+    if ' - ' in orig_clean:
+        partes = orig_clean.split(' - ', 1)
+        det = partes[1].strip()
+        if det:
+            return f"{std_choice} - {det}"
+        return std_choice
+
+    orig_upper = orig_clean.upper()
+    trivial_normals = [
+        'NORMAL', 'SIN ALTERACIONES', 'S/A', 'SIN ALTERACION', 'CONSERVADO', 'CONSERVADA',
+        'APARENTEMENTE NORMAL', 'ADECUADO', 'ADECUADA', 'BUENO', 'BUENA', 'VENTILAN BIEN',
+        'CAMPOS PULMONARES LIMPIOS Y NORMALES', 'CAMPOS LIMPIOS', 'SIN LESIONES',
+        'NO SE OBSERVAN ALTERACIONES', 'NEGATIVO', '0', '0 MG/DL', 'NO CONTIENE'
+    ]
+    if any(orig_upper == tn or orig_upper == f"NORMAL {tn}" for tn in trivial_normals):
+        return std_choice
+
+    cleaned_detail = re.sub(
+        r'^\s*\b(normal|alterado|anormal|patologico|si|sí|se realizo|se realizó|no|positivo|negativo|conservado|conservada|limpido|límpido|turbio|sinusal|ritmo sinusal)\b\s*[-:,;.]*\s*',
+        '',
+        orig_clean,
+        flags=re.IGNORECASE
+    ).strip()
+
+    if cleaned_detail and len(cleaned_detail) > 2 and cleaned_detail.upper() != std_choice.upper():
+        cleaned_detail = cleaned_detail.strip(" '\"-:,;()[]+")
+        if cleaned_detail:
+            cleaned_detail = cleaned_detail[0].upper() + cleaned_detail[1:] if len(cleaned_detail) > 1 else cleaned_detail
+            return f"{std_choice} - {cleaned_detail}"
+
+    return std_choice
 
 def _normalize_standard_values(field_id, val):
     if val is None:
@@ -80,19 +116,19 @@ def _normalize_standard_values(field_id, val):
     # Booleanos / Realizados
     if any(k in key_lower for k in ['realizada', 'realizado', 'validada', 'validado', 'declarado', 'cumple']):
         if any(w in s_upper for w in ['SI', 'SÍ', 'REALIZADO', 'REALIZADA', 'APLICADO', 'VALIDADO', 'CORRECTO', 'TRUE', '1']):
-            return 'SI'
+            return _append_comment_if_extra('SI', s)
         if any(w in s_upper for w in ['NO', 'NO REALIZADO', 'NO REALIZADA', 'FALSO', 'FALSE', '0']):
-            return 'NO'
+            return _append_comment_if_extra('NO', s)
         return s
 
     # Drogas
     if 'dro_' in key_lower or 'cocaina' in key_lower or 'cannabinoide' in key_lower:
         if any(w in s_upper for w in ['NO REACTIVO', 'NEGATIVO', 'NO DETECTADO']):
-            return 'NO REACTIVO'
+            return _append_comment_if_extra('NO REACTIVO', s)
         if any(w in s_upper for w in ['REACTIVO', 'POSITIVO', 'DETECTADO']):
-            return 'REACTIVO'
+            return _append_comment_if_extra('REACTIVO', s)
         if 'INDETERMINADO' in s_upper or 'DUDOSO' in s_upper:
-            return 'INDETERMINADO'
+            return _append_comment_if_extra('INDETERMINADO', s)
 
     # Grupo y factor
     if 'rh_grupo_sanguineo' in key_lower:
@@ -108,65 +144,64 @@ def _normalize_standard_values(field_id, val):
     # EKG
     if 'ekg_ritmo' in key_lower:
         if 'SINUSAL' in s_upper:
-            return 'SINUSAL'
+            return _append_comment_if_extra('SINUSAL', s)
         if 'ARRIT' in s_upper:
-            return 'ARRITMIA'
+            return _append_comment_if_extra('ARRITMIA', s)
         if 'NO SINUSAL' in s_upper:
-            return 'NO SINUSAL'
+            return _append_comment_if_extra('NO SINUSAL', s)
 
     # Oftalmología
     if 'oft_resultado_de_ishihara' in key_lower or 'vision_de_colores' in key_lower:
         if any(w in s_upper for w in ['NORMAL', 'NEGATIVO', 'CONSERVAD', 'CONSERVA']):
-            return 'NORMAL'
+            return _append_comment_if_extra('NORMAL', s)
         if any(w in s_upper for w in ['ALTERAD', 'DEFICIT', 'POSITIVO', 'DALTONISMO', 'ANORMAL']):
-            return 'ALTERADO'
+            return _append_comment_if_extra('ALTERADO', s)
 
     if 'oft_uso_de_lentes' in key_lower:
         if any(w in s_upper for w in ['SI', 'SÍ', 'USA', 'CORRECTOR']):
-            return 'SI'
+            return _append_comment_if_extra('SI', s)
         if any(w in s_upper for w in ['NO', 'NO USA']):
-            return 'NO'
+            return _append_comment_if_extra('NO', s)
 
     if 'oft_estereopsis' in key_lower:
         if any(w in s_upper for w in ['NORMAL', 'CONSERVAD', 'PRESENTE', 'POSITIV']):
-            return 'CONSERVADA'
+            return _append_comment_if_extra('CONSERVADA', s)
         if any(w in s_upper for w in ['ALTERAD', 'ANORMAL', 'DISMINUID', 'NEGATIV']):
-            return 'ALTERADA'
+            return _append_comment_if_extra('ALTERADA', s)
 
     # Orina
     if 'ori_aspecto' in key_lower:
         if 'LIMPID' in s_upper or 'CLARO' in s_upper or 'TRANSPARENTE' in s_upper:
-            return 'LIMPIDO'
+            return _append_comment_if_extra('LIMPIDO', s)
         if 'LIGERAMENTE TURBIO' in s_upper or 'SEMILIMPIDO' in s_upper:
-            return 'LIGERAMENTE TURBIO'
+            return _append_comment_if_extra('LIGERAMENTE TURBIO', s)
         if 'TURBIO' in s_upper:
-            return 'TURBIO'
+            return _append_comment_if_extra('TURBIO', s)
 
     if 'ori_color' in key_lower:
         if 'AMARILLO' in s_upper or 'AMBAR' in s_upper:
-            return 'AMARILLO'
+            return _append_comment_if_extra('AMARILLO', s)
         if 'ROJIZO' in s_upper or 'HEMAT' in s_upper:
-            return 'ROJIZO'
+            return _append_comment_if_extra('ROJIZO', s)
 
     if any(k in key_lower for k in ['ori_glucosa', 'ori_hemoglobina', 'ori_proteinas', 'ori_sangre', 'ori_cetonas', 'ori_bilirrubina', 'ori_nitritos']):
         if any(w in s_upper for w in ['NEGATIVO', 'NO CONTIENE', 'AUSENTE', 'NO OBSERVA', '0', 'NORMAL']):
-            return 'NEGATIVO'
+            return _append_comment_if_extra('NEGATIVO', s)
         if any(w in s_upper for w in ['POSITIVO', 'TRAZAS', 'PRESENTE', '+']):
-            return 'POSITIVO'
+            return _append_comment_if_extra('POSITIVO', s)
 
     # Órganos / Sistemas
     if any(key_lower.startswith(p) for p in ['cli_', 'rx_', 'mus_', 'der_', 'alt_']):
         if any(w in s_upper for w in ['NORMAL', 'CONSERVAD', 'SIN ALTERACI', 'S/A', 'NEGATIV', 'APARENTEMENTE NORMAL', 'ADECUAD', 'BUENO', 'VENTILAN BIEN']):
-            return 'NORMAL'
-        if any(w in s_upper for w in ['ANORMAL', 'ALTERAD', 'PATOLOGIC', 'DOLOR', 'LIMITAD', 'LESION', 'OBSERVAD']):
-            return 'ALTERADO'
+            return _append_comment_if_extra('NORMAL', s)
+        return _append_comment_if_extra('ALTERADO', s)
 
     # Resultados generales
     if 'resultado' in key_lower or 'indicador' in key_lower:
         if any(w in s_upper for w in ['NORMAL', 'DENTRO DE LIMITES', 'DENTRO DE RANGO', 'NEGATIVO', 'SIN ALTERACION', 'CONSERVADO', 'ADECUADO', 'OPTIMO', 'NO PATOLOGICO']):
-            return 'NORMAL'
+            return _append_comment_if_extra('NORMAL', s)
         if any(w in s_upper for w in ['ALTERADO', 'FUERA DE RANGO', 'PATOLOGICO', 'ANORMAL', 'OBSERVADO', 'POSITIVO']):
-            return 'ALTERADO'
+            return _append_comment_if_extra('ALTERADO', s)
         if any(w in s_upper for w in ['NO APTO']):
             return 'NO APTO'
         if any(w in s_upper for w in ['APTO CON RESTRIC', 'CON RESTRIC']):
