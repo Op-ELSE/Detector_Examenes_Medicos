@@ -104,7 +104,7 @@ def _normalize_standard_values(field_id, val):
         return s
     
     key_lower = field_id.lower()
-    if any(k in key_lower for k in ['recomendaci', 'observaci', 'conclusion', 'hallazgo', 'nombre', 'restricci', 'motivo', 'instrumento', 'centro_medico', 'comentario']):
+    if any(k in key_lower for k in ['recomendaci', 'observaci', 'conclusion', 'hallazgo', 'nombre', 'restricci', 'motivo', 'instrumento', 'centro_medico', 'comentario', 'firma', 'validacion']):
         return s
 
     s_upper = s.upper()

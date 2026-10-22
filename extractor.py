@@ -188,8 +188,8 @@ def normalize_standard_values(key, val):
     
     key_lower = key.lower()
     
-    # Excluir campos de texto libre narrativo (Recomendaciones, Observaciones, Conclusiones y nombres)
-    if any(k in key_lower for k in ['recomendaci', 'observaci', 'conclusion', 'hallazgo', 'nombre', 'restricci', 'motivo', 'instrumento', 'centro_medico', 'comentario']):
+    # Excluir campos de texto libre narrativo (Recomendaciones, Observaciones, Conclusiones, Nombres y Firmas de Profesionales)
+    if any(k in key_lower for k in ['recomendaci', 'observaci', 'conclusion', 'hallazgo', 'nombre', 'restricci', 'motivo', 'instrumento', 'centro_medico', 'comentario', 'firma', 'validacion']):
         return s
 
     s_upper = s.upper()
@@ -341,9 +341,12 @@ def build_dynamic_prompt():
         "     * 'APTO'\n"
         "     * 'NO APTO'\n"
         "     * 'APTO CON RESTRICCIONES'\n"
-        "3. VALORES NUMÉRICOS: Para valores cuantitativos de laboratorio, signos vitales y mediciones (Hemoglobina, Glucosa, Presión, etc.), extrae ÚNICAMENTE EL NÚMERO, sin unidades de medida (ej. '14.5', '120/80', '85').\n"
-        "4. FECHAS: Formato exacto mm/dd/yyyy (ej. 01/25/2020).\n"
-        "5. TEXTO LIBRE (NO UNIFORMIZADO): Únicamente los campos de Recomendaciones (Recomendacion_General, RX_Recomendacion_radiologica, etc.), Restricciones, Observaciones, Conclusiones diagnósticas detalladas y Nombres se redactan de forma libre según lo que indique el informe médico.\n"
+        "3. NOMBRES DE PROFESIONALES EN CAMPOS DE FIRMA O VALIDACIÓN:\n"
+        "   Para los campos que indican 'Firma_o_validacion' (como RX_Firma_o_validacion_radiologica, EKG_Firma_o_validacion_del_EKG, PSI_Firma_o_validacion_psicologica, AUD_Firma_o_validacion_audiometrica, ODO_Firma_o_validacion_odontologica, ESP_Firma_o_validacion_de_espirometria, OFT_Firma_o_validacion_oftalmologica):\n"
+        "   EXTRAE EL NOMBRE COMPLETO DEL PROFESIONAL MÉDICO / EVALUADOR QUE FIRMA O SELLA EL EXAMEN (incluyendo su colegiatura o CMP si está visible, ej: 'Dr. Carlos Mendoza Rojas - CMP 45210' o 'Lic. Patricia Vega Soto'). Si no aparece ningún profesional, deja el campo vacío o coloca 'No indica'. NO coloques 'SI' ni 'NO'.\n"
+        "4. VALORES NUMÉRICOS: Para valores cuantitativos de laboratorio, signos vitales y mediciones (Hemoglobina, Glucosa, Presión, etc.), extrae ÚNICAMENTE EL NÚMERO, sin unidades de medida (ej. '14.5', '120/80', '85').\n"
+        "5. FECHAS: Formato exacto mm/dd/yyyy (ej. 01/25/2020).\n"
+        "6. TEXTO LIBRE (NO UNIFORMIZADO): Únicamente los campos de Recomendaciones (Recomendacion_General, RX_Recomendacion_radiologica, etc.), Restricciones, Observaciones, Conclusiones diagnósticas detalladas, Nombres de pacientes y Firmas de profesionales se redactan de forma libre según lo que indique el informe médico.\n"
         "Devuelve un objeto JSON donde cada clave sea el nombre exacto del campo. Si un campo no está presente, omítelo.\n"
         "No añadas información adicional fuera de los campos solicitados."
     )
