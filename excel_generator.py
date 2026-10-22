@@ -60,6 +60,122 @@ def _clean_numeric_value(val):
     cleaned = re.sub(r'(?i)\s*(g/dl|mg/dl|mmol/l|ui/l|u/l|u/ml|mmhg|cm|kg|m2|m|l|ml|%|porcentaje|x10\^?\d*|cel/campo|p/c|leuc/campo|fl|pg|g/l|seg|segundos|bpm|lpm|rpm)\b.*', '', s).strip()
     return cleaned if cleaned else s
 
+def _normalize_standard_values(field_id, val):
+    if val is None:
+        return val
+    s = str(val).strip()
+    if not s:
+        return s
+    
+    key_lower = field_id.lower()
+    if any(k in key_lower for k in ['recomendaci', 'observaci', 'conclusion', 'hallazgo', 'nombre', 'restricci', 'motivo', 'instrumento', 'centro_medico', 'comentario']):
+        return s
+
+    s_upper = s.upper()
+
+    # Aptitud
+    if 'aptitud' in key_lower or key_lower in ['resultado_aptitud_final', 'alt_resultado_de_suficiencia']:
+        return _normalize_aptitud(val)
+
+    # Booleanos / Realizados
+    if any(k in key_lower for k in ['realizada', 'realizado', 'validada', 'validado', 'declarado', 'cumple']):
+        if any(w in s_upper for w in ['SI', 'SÍ', 'REALIZADO', 'REALIZADA', 'APLICADO', 'VALIDADO', 'CORRECTO', 'TRUE', '1']):
+            return 'SI'
+        if any(w in s_upper for w in ['NO', 'NO REALIZADO', 'NO REALIZADA', 'FALSO', 'FALSE', '0']):
+            return 'NO'
+        return s
+
+    # Drogas
+    if 'dro_' in key_lower or 'cocaina' in key_lower or 'cannabinoide' in key_lower:
+        if any(w in s_upper for w in ['NO REACTIVO', 'NEGATIVO', 'NO DETECTADO']):
+            return 'NO REACTIVO'
+        if any(w in s_upper for w in ['REACTIVO', 'POSITIVO', 'DETECTADO']):
+            return 'REACTIVO'
+        if 'INDETERMINADO' in s_upper or 'DUDOSO' in s_upper:
+            return 'INDETERMINADO'
+
+    # Grupo y factor
+    if 'rh_grupo_sanguineo' in key_lower:
+        m_abo = re.search(r'\b(A|B|AB|O)\b', s_upper)
+        if m_abo:
+            return m_abo.group(1)
+    if 'rh_factor' in key_lower or 'factor_rh' in key_lower:
+        if 'POS' in s_upper or '+' in s_upper:
+            return 'POSITIVO (+)'
+        if 'NEG' in s_upper or '-' in s_upper:
+            return 'NEGATIVO (-)'
+
+    # EKG
+    if 'ekg_ritmo' in key_lower:
+        if 'SINUSAL' in s_upper:
+            return 'SINUSAL'
+        if 'ARRIT' in s_upper:
+            return 'ARRITMIA'
+        if 'NO SINUSAL' in s_upper:
+            return 'NO SINUSAL'
+
+    # Oftalmología
+    if 'oft_resultado_de_ishihara' in key_lower or 'vision_de_colores' in key_lower:
+        if any(w in s_upper for w in ['NORMAL', 'NEGATIVO', 'CONSERVAD', 'CONSERVA']):
+            return 'NORMAL'
+        if any(w in s_upper for w in ['ALTERAD', 'DEFICIT', 'POSITIVO', 'DALTONISMO', 'ANORMAL']):
+            return 'ALTERADO'
+
+    if 'oft_uso_de_lentes' in key_lower:
+        if any(w in s_upper for w in ['SI', 'SÍ', 'USA', 'CORRECTOR']):
+            return 'SI'
+        if any(w in s_upper for w in ['NO', 'NO USA']):
+            return 'NO'
+
+    if 'oft_estereopsis' in key_lower:
+        if any(w in s_upper for w in ['NORMAL', 'CONSERVAD', 'PRESENTE', 'POSITIV']):
+            return 'CONSERVADA'
+        if any(w in s_upper for w in ['ALTERAD', 'ANORMAL', 'DISMINUID', 'NEGATIV']):
+            return 'ALTERADA'
+
+    # Orina
+    if 'ori_aspecto' in key_lower:
+        if 'LIMPID' in s_upper or 'CLARO' in s_upper or 'TRANSPARENTE' in s_upper:
+            return 'LIMPIDO'
+        if 'LIGERAMENTE TURBIO' in s_upper or 'SEMILIMPIDO' in s_upper:
+            return 'LIGERAMENTE TURBIO'
+        if 'TURBIO' in s_upper:
+            return 'TURBIO'
+
+    if 'ori_color' in key_lower:
+        if 'AMARILLO' in s_upper or 'AMBAR' in s_upper:
+            return 'AMARILLO'
+        if 'ROJIZO' in s_upper or 'HEMAT' in s_upper:
+            return 'ROJIZO'
+
+    if any(k in key_lower for k in ['ori_glucosa', 'ori_hemoglobina', 'ori_proteinas', 'ori_sangre', 'ori_cetonas', 'ori_bilirrubina', 'ori_nitritos']):
+        if any(w in s_upper for w in ['NEGATIVO', 'NO CONTIENE', 'AUSENTE', 'NO OBSERVA', '0', 'NORMAL']):
+            return 'NEGATIVO'
+        if any(w in s_upper for w in ['POSITIVO', 'TRAZAS', 'PRESENTE', '+']):
+            return 'POSITIVO'
+
+    # Órganos / Sistemas
+    if any(key_lower.startswith(p) for p in ['cli_', 'rx_', 'mus_', 'der_', 'alt_']):
+        if any(w in s_upper for w in ['NORMAL', 'CONSERVAD', 'SIN ALTERACI', 'S/A', 'NEGATIV', 'APARENTEMENTE NORMAL', 'ADECUAD', 'BUENO', 'VENTILAN BIEN']):
+            return 'NORMAL'
+        if any(w in s_upper for w in ['ANORMAL', 'ALTERAD', 'PATOLOGIC', 'DOLOR', 'LIMITAD', 'LESION', 'OBSERVAD']):
+            return 'ALTERADO'
+
+    # Resultados generales
+    if 'resultado' in key_lower or 'indicador' in key_lower:
+        if any(w in s_upper for w in ['NORMAL', 'DENTRO DE LIMITES', 'DENTRO DE RANGO', 'NEGATIVO', 'SIN ALTERACION', 'CONSERVADO', 'ADECUADO', 'OPTIMO', 'NO PATOLOGICO']):
+            return 'NORMAL'
+        if any(w in s_upper for w in ['ALTERADO', 'FUERA DE RANGO', 'PATOLOGICO', 'ANORMAL', 'OBSERVADO', 'POSITIVO']):
+            return 'ALTERADO'
+        if any(w in s_upper for w in ['NO APTO']):
+            return 'NO APTO'
+        if any(w in s_upper for w in ['APTO CON RESTRIC', 'CON RESTRIC']):
+            return 'APTO CON RESTRICCIONES'
+        if any(w in s_upper for w in ['APTO']):
+            return 'APTO'
+
+    return s
+
 def _make_columns():
     cols = []
     # Always include the PDF filename column
@@ -132,10 +248,9 @@ def generate_excel(records):
             
             if 'fecha' in field_id.lower() and val:
                 val = _normalize_date(val)
-            elif 'aptitud' in field_id.lower():
-                val = _normalize_aptitud(val)
             else:
                 val = _clean_numeric_value(val)
+                val = _normalize_standard_values(field_id, val)
             
             cell = ws.cell(row=row_idx, column=col_idx, value=str(val))
             cell.font = data_font

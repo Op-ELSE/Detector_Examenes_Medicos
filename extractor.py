@@ -125,18 +125,147 @@ def clean_numeric_value(val):
     cleaned = re.sub(r'(?i)\s*(g/dl|mg/dl|mmol/l|ui/l|u/l|u/ml|mmhg|cm|kg|m2|m|l|ml|%|porcentaje|x10\^?\d*|cel/campo|p/c|leuc/campo|fl|pg|g/l|seg|segundos|bpm|lpm|rpm)\b.*', '', s).strip()
     return cleaned if cleaned else s
 
+def normalize_standard_values(key, val):
+    """
+    Estandariza los valores categóricos a opciones predefinidas y uniformes tipo menú desplegable.
+    Las recomendaciones, observaciones, comentarios y conclusiones extensas se mantienen libres.
+    """
+    if val is None:
+        return val
+    s = str(val).strip()
+    if not s:
+        return s
+    
+    key_lower = key.lower()
+    
+    # Excluir campos de texto libre narrativo (Recomendaciones, Observaciones, Conclusiones y nombres)
+    if any(k in key_lower for k in ['recomendaci', 'observaci', 'conclusion', 'hallazgo', 'nombre', 'restricci', 'motivo', 'instrumento', 'centro_medico', 'comentario']):
+        return s
+
+    s_upper = s.upper()
+
+    # 1. Aptitud médica final o sectorial
+    if 'aptitud' in key_lower or key_lower in ['resultado_aptitud_final', 'alt_resultado_de_suficiencia']:
+        if 'NO APTO' in s_upper:
+            return 'NO APTO'
+        if 'RESTRICCI' in s_upper or 'OBSERV' in s_upper:
+            return 'APTO CON RESTRICCIONES'
+        if 'APTO' in s_upper:
+            return 'APTO'
+        return s
+
+    # 2. Campos booleanos / Si-No (Pruebas realizadas, validaciones, firmas)
+    if any(k in key_lower for k in ['realizada', 'realizado', 'validada', 'validado', 'declarado', 'cumple']):
+        if any(w in s_upper for w in ['SI', 'SÍ', 'REALIZADO', 'REALIZADA', 'APLICADO', 'VALIDADO', 'CORRECTO', 'TRUE', '1']):
+            return 'SI'
+        if any(w in s_upper for w in ['NO', 'NO REALIZADO', 'NO REALIZADA', 'FALSO', 'FALSE', '0']):
+            return 'NO'
+        return s
+
+    # 3. Exámenes toxicológicos / Drogas (Cocaína, Cannabinoides)
+    if 'dro_' in key_lower or 'cocaina' in key_lower or 'cannabinoide' in key_lower:
+        if any(w in s_upper for w in ['NO REACTIVO', 'NEGATIVO', 'NO DETECTADO']):
+            return 'NO REACTIVO'
+        if any(w in s_upper for w in ['REACTIVO', 'POSITIVO', 'DETECTADO']):
+            return 'REACTIVO'
+        if 'INDETERMINADO' in s_upper or 'DUDOSO' in s_upper:
+            return 'INDETERMINADO'
+
+    # 4. Grupo sanguíneo ABO y Factor RH
+    if 'rh_grupo_sanguineo' in key_lower:
+        m_abo = re.search(r'\b(A|B|AB|O)\b', s_upper)
+        if m_abo:
+            return m_abo.group(1)
+    if 'rh_factor' in key_lower or 'factor_rh' in key_lower:
+        if 'POS' in s_upper or '+' in s_upper:
+            return 'POSITIVO (+)'
+        if 'NEG' in s_upper or '-' in s_upper:
+            return 'NEGATIVO (-)'
+
+    # 5. EKG: Ritmo cardíaco y ritmo sinusal
+    if 'ekg_ritmo' in key_lower:
+        if 'SINUSAL' in s_upper:
+            return 'SINUSAL'
+        if 'ARRIT' in s_upper:
+            return 'ARRITMIA'
+        if 'NO SINUSAL' in s_upper:
+            return 'NO SINUSAL'
+
+    # 6. Agudeza visual / Oftalmología
+    if 'oft_resultado_de_ishihara' in key_lower or 'vision_de_colores' in key_lower:
+        if any(w in s_upper for w in ['NORMAL', 'NEGATIVO', 'CONSERVAD', 'CONSERVA']):
+            return 'NORMAL'
+        if any(w in s_upper for w in ['ALTERAD', 'DEFICIT', 'POSITIVO', 'DALTONISMO', 'ANORMAL']):
+            return 'ALTERADO'
+
+    if 'oft_uso_de_lentes' in key_lower:
+        if any(w in s_upper for w in ['SI', 'SÍ', 'USA', 'CORRECTOR']):
+            return 'SI'
+        if any(w in s_upper for w in ['NO', 'NO USA']):
+            return 'NO'
+
+    if 'oft_estereopsis' in key_lower:
+        if any(w in s_upper for w in ['NORMAL', 'CONSERVAD', 'PRESENTE', 'POSITIV']):
+            return 'CONSERVADA'
+        if any(w in s_upper for w in ['ALTERAD', 'ANORMAL', 'DISMINUID', 'NEGATIV']):
+            return 'ALTERADA'
+
+    # 7. Orina: Aspecto, Color, Elementos Químicos
+    if 'ori_aspecto' in key_lower:
+        if 'LIMPID' in s_upper or 'CLARO' in s_upper or 'TRANSPARENTE' in s_upper:
+            return 'LIMPIDO'
+        if 'LIGERAMENTE TURBIO' in s_upper or 'SEMILIMPIDO' in s_upper:
+            return 'LIGERAMENTE TURBIO'
+        if 'TURBIO' in s_upper:
+            return 'TURBIO'
+
+    if 'ori_color' in key_lower:
+        if 'AMARILLO' in s_upper or 'AMBAR' in s_upper:
+            return 'AMARILLO'
+        if 'ROJIZO' in s_upper or 'HEMAT' in s_upper:
+            return 'ROJIZO'
+
+    if any(k in key_lower for k in ['ori_glucosa', 'ori_hemoglobina', 'ori_proteinas', 'ori_sangre', 'ori_cetonas', 'ori_bilirrubina', 'ori_nitritos']):
+        if any(w in s_upper for w in ['NEGATIVO', 'NO CONTIENE', 'AUSENTE', 'NO OBSERVA', '0', 'NORMAL']):
+            return 'NEGATIVO'
+        if any(w in s_upper for w in ['POSITIVO', 'TRAZAS', 'PRESENTE', '+']):
+            return 'POSITIVO'
+
+    # 8. Evaluación de Órganos / Sistemas (Clínico, RX, Musculoesquelético, Dermatológico)
+    # Ej: Cabeza, Cuello, Tórax, Abdomen, Piel, Columna, etc.
+    if any(key_lower.startswith(p) for p in ['cli_', 'rx_', 'mus_', 'der_', 'alt_']):
+        if any(w in s_upper for w in ['NORMAL', 'CONSERVAD', 'SIN ALTERACI', 'S/A', 'NEGATIV', 'APARENTEMENTE NORMAL', 'ADECUAD', 'BUENO', 'VENTILAN BIEN']):
+            return 'NORMAL'
+        if any(w in s_upper for w in ['ANORMAL', 'ALTERAD', 'PATOLOGIC', 'DOLOR', 'LIMITAD', 'LESION', 'OBSERVAD']):
+            return 'ALTERADO'
+
+    # 9. Resultados generales de especialidades (RX_Resultado, EKG_Resultado, PSI_Resultado, etc.)
+    if 'resultado' in key_lower or 'indicador' in key_lower:
+        if any(w in s_upper for w in ['NORMAL', 'DENTRO DE LIMITES', 'DENTRO DE RANGO', 'NEGATIVO', 'SIN ALTERACION', 'CONSERVADO', 'ADECUADO', 'OPTIMO', 'NO PATOLOGICO']):
+            return 'NORMAL'
+        if any(w in s_upper for w in ['ALTERADO', 'FUERA DE RANGO', 'PATOLOGICO', 'ANORMAL', 'OBSERVADO', 'POSITIVO']):
+            return 'ALTERADO'
+        if any(w in s_upper for w in ['NO APTO']):
+            return 'NO APTO'
+        if any(w in s_upper for w in ['APTO CON RESTRIC', 'CON RESTRIC']):
+            return 'APTO CON RESTRICCIONES'
+        if any(w in s_upper for w in ['APTO']):
+            return 'APTO'
+
+    return s
+
 def clean_extracted_data(data):
-    """Post-procesa fechas, aptitudes y valores numéricos limpios."""
+    """Post-procesa fechas, aptitudes, opciones estandarizadas y valores numéricos limpios."""
     for key, val in list(data.items()):
         if not val:
             continue
         key_lower = key.lower()
         if 'fecha' in key_lower and isinstance(val, str):
             data[key] = normalize_date_format(val)
-        elif 'aptitud' in key_lower:
-            data[key] = normalize_aptitud(val)
         else:
-            data[key] = clean_numeric_value(val)
+            val_clean = clean_numeric_value(val)
+            val_std = normalize_standard_values(key, val_clean)
+            data[key] = val_std
     return data
 
 def build_dynamic_prompt():
@@ -146,13 +275,23 @@ def build_dynamic_prompt():
         "Eres un auditor médico experto en Salud Ocupacional.\n"
         "Analiza el documento PDF y extrae la información correspondiente a los siguientes campos:\n"
         f"{fields_list}\n"
-        "REGLAS OBLIGATORIAS:\n"
-        "1. VALORES NUMÉRICOS: Para cualquier campo que reporte valores de laboratorio, signos vitales o mediciones (ej. Hemoglobina, Glucosa, Colesterol, Leucocitos, Presión, Talla, Peso, Frecuencia Cardíaca, etc.), EXTRAE ÚNICAMENTE EL VALOR NUMÉRICO, SIN UNIDAD DE MEDIDA (ejemplo: si dice '14.5 g/dL' coloca '14.5'; si dice '95 mg/dL' coloca '95'; si dice '72 lpm' coloca '72').\n"
-        "2. RESULTADOS DE APTITUD: Para los campos de aptitud (como Resultado_Aptitud_Final), el valor DEBE ser estrictamente uno de estos tres valores estandarizados:\n"
-        "   - 'APTO'\n"
-        "   - 'NO APTO'\n"
-        "   - 'APTO CON RESTRICCIONES'\n"
-        "3. FORMATO DE FECHAS: Todos los campos de fecha DEBEN tener siempre el formato exacto mm/dd/yyyy (ejemplo: 01/25/2020).\n"
+        "REGLAS OBLIGATORIAS DE ESTANDARIZACIÓN (COMO OPCIONES DE LISTA):\n"
+        "1. VALORES CATEGÓRICOS Y DE EVALUACIÓN (DEBEN SER UNIFORMES):\n"
+        "   - Resultados de órganos, sistemas o pruebas generales (RX_Campos_pulmonares, CLI_Cabeza, CLI_Torax, EKG_Resultado, RX_Resultado, etc.): Usa estrictamente 'NORMAL' o 'ALTERADO'.\n"
+        "   - Campos de confirmación / realización (ej. EKG_Electrocardiograma_realizado, RX_Radiografia_realizada, etc.): Usa estrictamente 'SI' o 'NO'.\n"
+        "   - Toxicología / Drogas (Cocaína, Cannabinoides): Usa estrictamente 'NO REACTIVO', 'REACTIVO' o 'INDETERMINADO'.\n"
+        "   - Visión de colores / Ishihara: Usa estrictamente 'NORMAL' o 'ALTERADO'. Uso de lentes: 'SI' o 'NO'.\n"
+        "   - Orina aspecto: 'LIMPIDO' o 'TURBIO'. Examen químico de orina (Glucosa, Proteínas, Sangre, etc.): 'NEGATIVO' o 'POSITIVO'.\n"
+        "   - Ritmo cardíaco EKG: 'SINUSAL', 'NO SINUSAL' o 'ARRITMIA'.\n"
+        "   - Grupo y Factor: Grupo 'A', 'B', 'AB', 'O'. Factor 'POSITIVO (+)' o 'NEGATIVO (-)'.\n"
+        "2. RESULTADOS DE APTITUD MÉDICA:\n"
+        "   - El valor para Resultado_Aptitud_Final y aptitudes DEBE ser estrictamente uno de estos tres:\n"
+        "     * 'APTO'\n"
+        "     * 'NO APTO'\n"
+        "     * 'APTO CON RESTRICCIONES'\n"
+        "3. VALORES NUMÉRICOS: Para valores cuantitativos de laboratorio, signos vitales y mediciones (Hemoglobina, Glucosa, Presión, etc.), extrae ÚNICAMENTE EL NÚMERO, sin unidades de medida (ej. '14.5', '120/80', '85').\n"
+        "4. FECHAS: Formato exacto mm/dd/yyyy (ej. 01/25/2020).\n"
+        "5. TEXTO LIBRE (NO UNIFORMIZADO): Únicamente los campos de Recomendaciones (Recomendacion_General, RX_Recomendacion_radiologica, etc.), Restricciones, Observaciones, Conclusiones diagnósticas detalladas y Nombres se redactan de forma libre según lo que indique el informe médico.\n"
         "Devuelve un objeto JSON donde cada clave sea el nombre exacto del campo. Si un campo no está presente, omítelo.\n"
         "No añadas información adicional fuera de los campos solicitados."
     )
