@@ -188,8 +188,8 @@ def normalize_standard_values(key, val):
     
     key_lower = key.lower()
     
-    # Excluir campos de texto libre narrativo (Recomendaciones, Observaciones, Conclusiones, Nombres y Firmas de Profesionales)
-    if any(k in key_lower for k in ['recomendaci', 'observaci', 'conclusion', 'hallazgo', 'nombre', 'restricci', 'motivo', 'instrumento', 'centro_medico', 'comentario', 'firma', 'validacion']):
+    # Excluir campos de texto libre narrativo (Recomendaciones, Observaciones, Conclusiones, Nombres, Firmas de Profesionales y Códigos)
+    if any(k in key_lower for k in ['recomendaci', 'observaci', 'conclusion', 'hallazgo', 'nombre', 'restricci', 'motivo', 'instrumento', 'centro_medico', 'comentario', 'firma', 'validacion', 'codigo']):
         return s
 
     s_upper = s.upper()
@@ -284,7 +284,7 @@ def normalize_standard_values(key, val):
     # 8. Evaluación de Órganos / Sistemas (Clínico, RX, Musculoesquelético, Dermatológico)
     # Ej: Cabeza, Cuello, Tórax, Abdomen, Piel, Columna, etc.
     if any(key_lower.startswith(p) for p in ['cli_', 'rx_', 'mus_', 'der_', 'alt_']):
-        if any(w in s_upper for w in ['NORMAL', 'CONSERVAD', 'SIN ALTERACI', 'S/A', 'NEGATIV', 'APARENTEMENTE NORMAL', 'ADECUAD', 'BUENO', 'VENTILAN BIEN']):
+        if any(w in s_upper for w in ['NORMAL', 'CONSERVAD', 'SIN ALTERACI', 'S/A', 'NEGATIV', 'APARENTEMENTE NORMAL', 'ADECUAD', 'BUENO', 'VENTILAN BIEN', 'LIMPIOS', 'SIN LESIONES', 'SIN PATOLOGIA', 'SIN HALLAZGOS', 'LIBRE']):
             return _append_comment_if_extra('NORMAL', s)
         # Si no dice normal y describe hallazgos o anomalías, es ALTERADO + detalle
         return _append_comment_if_extra('ALTERADO', s)
@@ -345,8 +345,9 @@ def build_dynamic_prompt():
         "   Para los campos que indican 'Firma_o_validacion' (como RX_Firma_o_validacion_radiologica, EKG_Firma_o_validacion_del_EKG, PSI_Firma_o_validacion_psicologica, AUD_Firma_o_validacion_audiometrica, ODO_Firma_o_validacion_odontologica, ESP_Firma_o_validacion_de_espirometria, OFT_Firma_o_validacion_oftalmologica):\n"
         "   EXTRAE EL NOMBRE COMPLETO DEL PROFESIONAL MÉDICO / EVALUADOR QUE FIRMA O SELLA EL EXAMEN (incluyendo su colegiatura o CMP si está visible, ej: 'Dr. Carlos Mendoza Rojas - CMP 45210' o 'Lic. Patricia Vega Soto'). Si no aparece ningún profesional, deja el campo vacío o coloca 'No indica'. NO coloques 'SI' ni 'NO'.\n"
         "4. VALORES NUMÉRICOS: Para valores cuantitativos de laboratorio, signos vitales y mediciones (Hemoglobina, Glucosa, Presión, etc.), extrae ÚNICAMENTE EL NÚMERO, sin unidades de medida (ej. '14.5', '120/80', '85').\n"
-        "5. FECHAS: Formato exacto mm/dd/yyyy (ej. 01/25/2020).\n"
-        "6. TEXTO LIBRE (NO UNIFORMIZADO): Únicamente los campos de Recomendaciones (Recomendacion_General, RX_Recomendacion_radiologica, etc.), Restricciones, Observaciones, Conclusiones diagnósticas detalladas, Nombres de pacientes y Firmas de profesionales se redactan de forma libre según lo que indique el informe médico.\n"
+        "5. CÓDIGO DE RADIOGRAFÍA (RX_Codigo_de_radiografia): Extrae ÚNICAMENTE el código o número de expediente del estudio radiológico (ej. 'RX-2024-001453', '20240115-001', 'RAD-123456'). NO lo clasifiques como NORMAL o ALTERADO. Si el documento muestra un código alfanumérico de identificación del estudio, extrae ese código exactamente tal como aparece.\n"
+        "6. FECHAS: Formato exacto mm/dd/yyyy (ej. 01/25/2020).\n"
+        "7. TEXTO LIBRE (NO UNIFORMIZADO): Únicamente los campos de Recomendaciones (Recomendacion_General, RX_Recomendacion_radiologica, etc.), Restricciones, Observaciones, Conclusiones diagnósticas detalladas, Nombres de pacientes y Firmas de profesionales se redactan de forma libre según lo que indique el informe médico.\n"
         "Devuelve un objeto JSON donde cada clave sea el nombre exacto del campo. Si un campo no está presente, omítelo.\n"
         "No añadas información adicional fuera de los campos solicitados."
     )
