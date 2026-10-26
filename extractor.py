@@ -194,7 +194,19 @@ def normalize_standard_values(key, val):
 
     s_upper = s.upper()
 
-    # 1. Aptitud médica final o sectorial (ESTRICTAMENTE PURA, sin comentarios anexados aquí)
+    # 5. Calidad técnica de la imagen (solo valores numéricos 1‑4)
+    if key_lower == 'rx_calidad_tecnica_de_la_imagen' or 'calidad' in key_lower:
+        s_upper = s.upper()
+        if 'BUENA' in s_upper:
+            return '1'
+        if 'ACEPTABLE' in s_upper:
+            return '2'
+        if 'BAJA CALIDAD' in s_upper:
+            return '3'
+        if 'INACEPTABLE' in s_upper:
+            return '4'
+        # fallback: return original text if none matches
+        return s
     if 'aptitud' in key_lower or key_lower in ['resultado_aptitud_final', 'alt_resultado_de_suficiencia']:
         if 'NO APTO' in s_upper:
             return 'NO APTO'

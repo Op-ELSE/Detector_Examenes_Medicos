@@ -104,7 +104,19 @@ def _normalize_standard_values(field_id, val):
         return s
     
     key_lower = field_id.lower()
-    if any(k in key_lower for k in ['recomendaci', 'observaci', 'conclusion', 'hallazgo', 'nombre', 'restricci', 'motivo', 'instrumento', 'centro_medico', 'comentario', 'firma', 'validacion', 'codigo']):
+    # 5. Calidad técnica de la imagen (solo valores numéricos 1‑4)
+    if field_id.lower() == 'rx_calidad_tecnica_de_la_imagen' or 'calidad' in field_id.lower():
+        s_upper = s.upper()
+        if 'BUENA' in s_upper:
+            return '1'
+        if 'ACEPTABLE' in s_upper:
+            return '2'
+        if 'BAJA CALIDAD' in s_upper:
+            return '3'
+        if 'INACEPTABLE' in s_upper:
+            return '4'
+        return s
+
         return s
 
     s_upper = s.upper()
